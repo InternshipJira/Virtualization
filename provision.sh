@@ -16,7 +16,7 @@ mkdir  /home/$USER/uploads
 
 sudo addgroup sftpgroup
 sudo adduser -G sftpgroup -h /home/$USER -s /sbin/nologin "$USER"
-echo "sftpuser:weakpasswordforpurpose" | sudo chpasswd
+echo "sftpuser:$3" | sudo chpasswd
 
 
 sudo chown root:root /home/$USER
@@ -69,6 +69,6 @@ echo "0 3 * * * /usr/bin/rkhunter --cronjob --report-warnings-only" > mycron.txt
 crontab mycron.txt
 
 rkhunter --propupd
-rkhunter --update
-rkhunter --check
+
+#rkhunter --check
 
