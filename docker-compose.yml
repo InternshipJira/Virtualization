@@ -1,0 +1,41 @@
+services:
+  sftp_log_reader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: log_reader
+    
+    environment:
+      - SFTP_HOST=${SFTP_HOST}
+      - SFTP_PORT=${SFTP_PORT}
+      - SFTP_USERNAME=${SFTP_USERNAME}
+      - SFTP_KEY_PATH=${SFTP_KEY_PATH}
+      - TOKEN=${GIT_TOKEN}
+      - DB_HOST=${DB_HOSTNAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+    command: /bin/sh /app/key_exchange.sh ; /bin/sh /app/start.sh
+    depends_on:
+      - db
+    ports:
+      - "5000:5000"
+    networks:
+      - app-network
+  db:
+    image: mariadb:10.11
+    container_name: ${DB_HOSTNAME}
+    restart: always
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_PASS}
+      - MARIADB_USER=${DB_USER}
+      - MARIADB_PASSWORD=${DB_PASS}
+      - MARIADB_DATABASE=${DB_NAME}
+    networks:
+      - app-network
+
+
+    
+networks:
+  app-network:
+    driver: bridge
