@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connections Per Source Host (Custom Intervals)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        select, input[type="datetime-local"], button {
+            padding: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .error, .success {
+            font-size: 14px;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+        .no-data {
+            text-align: center;
+            font-size: 16px;
+            color: #555;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Connections to Each Source Host Over Time</h2>
+    <div class="controls">
+        <label for="interval">Select Time Interval: </label>
+        <select id="interval" onchange="updateChart()">
+            <option value="5min">5 Minutes</option>
+            <option value="hourly">Hourly</option>
+            <option value="daily">Daily</option>
+        </select>
+        <label for="startTime">Start Time: </label>
+        <input type="datetime-local" id="startTime" onchange="updateChart()">
+        <label for="endTime">End Time: </label>
+        <input type="datetime-local" id="endTime" onchange="updateChart()">
+        <button onclick="sendSignal()">Update</button>
+        <button onclick="openLogsTable()">Open Logs Table</button>
+    </div>
+    <div id="message" class="error"></div>
+    <div id="noDataMessage" class="no-data" style="display: none;">No data available for the selected time range.</div>
+    <canvas id="logChart" width="1000" height="400"></canvas>
+
+    <script>
+        let chartInstance = null;
+
+        async function fetchLogs() {
+            const response = await fetch("/logs");
+            return await response.json();
+        }
+
+        async function sendSignal() {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = '';
+            try {
+                const response = await fetch('/signal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ signal: true })
+                });
+                if (response.ok) {
+                    messageDiv.className = 'success';
+                    messageDiv.textContent = 'Signal sent successfully!';
+                    setTimeout(() => messageDiv.textContent = '', 3000); // Clear message after 3 seconds
+                } else {
+                    messageDiv.className = 'error';
+                    messageDiv.textContent = 'Failed to send signal: ' + response.statusText;
+                }
+            } catch (error) {
+                messageDiv.className = 'error';
+                messageDiv.textContent = 'Error sending signal: ' + error.message;
+            }
+        }
+
+        function filterLogsByTimeRange(logs, startTime, endTime) {
+            if (!startTime || !endTime) return logs;
+            const start = new Date(startTime + 'Z');
+            const end = new Date(endTime + 'Z');
+            if (start > end) {
+                document.getElementById('message').className = 'error';
+                document.getElementById('message').textContent = 'Start time must be before end time.';
+                return [];
+            }
+            return logs.filter(log => {
+                const logTime = new Date(log.timestamp);
+                return logTime >= start && logTime <= end;
+            });
+        }
+
+        function groupLogs(logs, interval) {
+            const hosts = ["192.168.56.11", "192.168.56.12", "192.168.56.13"];
+            const grouped = {};
+            hosts.forEach(host => grouped[host] = {});
+            const allTimestamps = new Set();
+
+            logs.forEach(log => {
+                const logTime = new Date(log.timestamp);
+                let time;
+
+                if (interval === "5min") {
+                    const roundedMinutes = Math.floor(logTime.getMinutes() / 5) * 5;
+                    logTime.setMinutes(roundedMinutes, 0, 0);
+                    time = logTime.toISOString().slice(0, 16);
+                } else if (interval === "hourly") {
+                    logTime.setMinutes(0, 0, 0);
+                    time = logTime.toISOString().slice(0, 13) + ":00";
+                } else if (interval === "daily") {
+                    logTime.setHours(0, 0, 0, 0);
+                    time = logTime.toISOString().slice(0, 10);
+                }
+
+                const host = log.source_host;
+                if (!grouped[host][time]) {
+                    grouped[host][time] = {
+                        count: 0,
+                        ipAddresses: new Set()
+                    };
+                }
+                grouped[host][time].count++;
+                grouped[host][time].ipAddresses.add(log.ip_address);
+                allTimestamps.add(time);
+            });
+
+            return { grouped, allTimestamps: Array.from(allTimestamps).sort() };
+        }
+
+        function createChart(labels, datasets, interval) {
+            const ctx = document.getElementById('logChart').getContext('2d');
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(tooltipItem) {
+                                    const time = tooltipItem.label;
+                                    const host = tooltipItem.dataset.label;
+                                    const ipSet = groupedData[host][time]?.ipAddresses || new Set();
+                                    const ipAddresses = Array.from(ipSet);
+                                    const connections = tooltipItem.raw;
+                                    return `${host} at ${time}: ${connections} connections | IPs: ${ipAddresses.join(", ") || "None"}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: `Timestamp (${interval === '5min' ? '5-Minute' : interval === 'hourly' ? 'Hourly' : 'Daily'} Intervals)`
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Connections'
+                            },
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        let groupedData = {};
+
+        async function updateChart() {
+            const interval = document.getElementById('interval').value;
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+            const messageDiv = document.getElementById('message');
+            const noDataMessage = document.getElementById('noDataMessage');
+            const canvas = document.getElementById('logChart');
+
+            messageDiv.className = 'error';
+            messageDiv.textContent = '';
+            noDataMessage.style.display = 'none';
+            canvas.style.display = 'block';
+
+            let logs = await fetchLogs();
+
+            if (startTime && endTime) {
+                logs = filterLogsByTimeRange(logs, startTime, endTime);
+            }
+
+            if (logs.length === 0) {
+                if (chartInstance) {
+                    chartInstance.destroy();
+                    chartInstance = null;
+                }
+                canvas.style.display = 'none';
+                noDataMessage.style.display = 'block';
+                return;
+            }
+
+            const { grouped, allTimestamps } = groupLogs(logs, interval);
+            groupedData = grouped;
+
+            const hosts = ["192.168.56.11", "192.168.56.12", "192.168.56.13"];
+            const datasets = hosts.map(host => ({
+                label: host,
+                data: allTimestamps.map(t => grouped[host][t]?.count || 0),
+                borderColor: getColor(host),
+                fill: false,
+                tension: 0.2
+            }));
+
+            createChart(allTimestamps, datasets, interval);
+        }
+        function openLogsTable() {
+            const start = document.getElementById('startTime').value;
+            const end = document.getElementById('endTime').value;
+                
+            if (!start || !end) {
+                alert("Please select both start and end times.");
+                return;
+            }
+        
+            // Create and submit a form dynamically
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/get-logs'; // make sure this route is handled by Flask
+        
+            const startInput = document.createElement('input');
+            startInput.type = 'hidden';
+            startInput.name = 'start_datetime';
+            startInput.value = start;
+        
+            const endInput = document.createElement('input');
+            endInput.type = 'hidden';
+            endInput.name = 'end_datetime';
+            endInput.value = end;
+        
+            form.appendChild(startInput);
+            form.appendChild(endInput);
+        
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function getColor(host) {
+            const colors = {
+                "192.168.56.11": "rgba(255, 99, 132, 1)",
+                "192.168.56.12": "rgba(54, 162, 235, 1)",
+                "192.168.56.13": "rgba(75, 192, 192, 1)"
+            };
+            return colors[host] || "rgba(100,100,100,1)";
+        }
+
+        updateChart();
+    </script>
+</body>
+</html>

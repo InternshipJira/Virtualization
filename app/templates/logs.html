@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Log Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        table { border-collapse: collapse; width: 100%; margin-top: 1em; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>Log Viewer</h1>
+    <form method="POST" action="/get-logs">
+        <label>Start Time:</label>
+        <input type="datetime-local" name="start_datetime" required>
+        <label>End Time:</label>
+        <input type="datetime-local" name="end_datetime" required>
+        <button type="submit">Fetch Logs</button>
+    </form>
+
+    {% if logs %}
+    <h2>Results:</h2>
+    <table>
+        <thead>
+            <tr>
+                {% for col in logs[0].keys() %}
+                    <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in logs %}
+                <tr>
+                    {% for value in row.values() %}
+                        <td>{{ value }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% elif logs is not none %}
+        <p>No logs found for the selected range.</p>
+    {% endif %}
+</body>
+</html>
