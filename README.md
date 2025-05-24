@@ -1,5 +1,5 @@
 # Virtualization
-To run this project u need:
+## To run this project u need:
 - Vagrant
 - Docker (with compose plugin)
 - VS Code (optionatl)
