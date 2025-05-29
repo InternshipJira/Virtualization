@@ -6,10 +6,9 @@ COPY requirements.txt .
 RUN apk add --no-cache build-base libffi-dev openssh-client git && \
     pip install --no-cache-dir -r requirements.txt && \
     apk del build-base libffi-dev && \
-    mkdir templates
-    
-RUN rm -rf ./local/lib/python3.9/site-packages/pip*
-RUN rm -rf ./local/lib/python3.9/site-packages/setuptools*
+    mkdir templates && \
+    rm -rf ./local/lib/python3.9/site-packages/pip* && \
+    rm -rf ./local/lib/python3.9/site-packages/setuptools*
 
 
 COPY raw_log_fetcher.py .
